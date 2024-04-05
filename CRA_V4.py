@@ -57,7 +57,7 @@ def perform_invitation_process(driver, wait):
     except Exception as e:
         print(f"Erreur lors de la recherche du bouton : {e}")
     try:
-        Invite_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="react-spectrum-26"]/li[1]')))
+        Invite_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, 'spectrum-Menu-itemLabel')))
         Invite_button.click()
     except Exception as e:
         print(f"Erreur lors de la recherche du bouton : {e}")
