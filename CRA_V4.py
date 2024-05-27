@@ -1,7 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
-from tkinter import filedialog
-from tkinter import messagebox
+from tkinter import ttk, filedialog, messagebox
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -9,74 +7,111 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 import pandas as pd
+import datetime
 import time
-import os
 
 def initialize_driver():
-    dr = webdriver.Chrome()
-    return dr
+    return webdriver.Chrome()
 
 def execute_invitation_process(email, identifiant, password, library_links):
+    results = []  # To store the result of each invitation
     try:
         driver = initialize_driver()
-        wait = WebDriverWait(driver, 5)
+        wait = WebDriverWait(driver, 10)
         for idx, library_link in enumerate(library_links):
             if idx == 0:
-                connect_to_library(driver, email, identifiant, password, library_link)
+                connected = connect_to_library(driver, email, identifiant, password, library_link, wait)
+                if not connected:
+                    results.append({"Email": email, "LibraryLink": library_link, "Status": "Non OK"})
+                    break
             else:
-                navigate_to_library(driver, library_link)
-            perform_invitation_process(driver, wait)
+                navigate_to_library(driver, library_link, wait)
+                time.sleep(2) 
+            status = perform_invitation_process(driver, wait)
+            results.append({"Email": email, "LibraryLink": library_link, "Status": "OK" if status else "Non OK"})
+            time.sleep(1)  
         driver.quit()
     except Exception as e:
         messagebox.showerror("Erreur", f"Une erreur s'est produite : {str(e)}")
+    finally:
+        generate_report(results)
 
-def connect_to_library(driver, email, identifiant, password, library_link):
+def connect_to_library(driver, email, identifiant, password, library_link, wait):
     driver.get(library_link)
-    wait = WebDriverWait(driver, 5)
-    email_input = wait.until(EC.presence_of_element_located((By.NAME, "username")))
-    email_input.send_keys(email)
-    continue_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".spectrum-Button.spectrum-Button--cta.SpinnerButton.SpinnerButton--right")))
-    continue_button.click()
-    wait.until(EC.presence_of_element_located((By.NAME, "pf.username")))
-    identifiant_input = driver.find_element(By.NAME, "pf.username")
-    identifiant_input.send_keys(identifiant)
-    wait.until(EC.presence_of_element_located((By.NAME, "pf.pass")))
-    password_input = driver.find_element(By.NAME, "pf.pass")
-    password_input.send_keys(password)
-    soumettre_button = wait.until(EC.element_to_be_clickable((By.ID, "signOnButton")))
-    soumettre_button.click()
-    time.sleep(8)
+    try:
+        email_input = wait.until(EC.presence_of_element_located((By.NAME, "username")))
+        email_input.send_keys(email)
+        
+        continue_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".spectrum-Button.spectrum-Button--cta.SpinnerButton.SpinnerButton--right")))
+        continue_button.click()
+        
+        identifiant_input = wait.until(EC.presence_of_element_located((By.NAME, "pf.username")))
+        identifiant_input.send_keys(identifiant)
+        
+        password_input = wait.until(EC.presence_of_element_located((By.NAME, "pf.pass")))
+        password_input.send_keys(password)
+        
+        soumettre_button = wait.until(EC.element_to_be_clickable((By.ID, "signOnButton")))
+        soumettre_button.click()
+        
+        wait.until(EC.url_changes(library_link))
+        return True
+    except Exception as e:
+        messagebox.showerror("Erreur de connexion", f"Erreur lors de la connexion : {str(e)}")
+        driver.quit()
+        return False
 
-def navigate_to_library(driver, library_link):
+def navigate_to_library(driver, library_link, wait):
     driver.get(library_link)
+    wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
 
 def perform_invitation_process(driver, wait):
     try:
         share_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[aria-label="Partager"]')))
         share_button.click()
     except Exception as e:
-        print(f"Erreur lors de la recherche du bouton : {e}")
+        print(f"Erreur lors de la recherche du bouton Partager : {e}")
+        return False
+
     try:
-        Invite_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, 'spectrum-Menu-itemLabel')))
-        Invite_button.click()
+        invite_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, 'spectrum-Menu-itemLabel')))
+        invite_button.click()
     except Exception as e:
-        print(f"Erreur lors de la recherche du bouton : {e}")
+        print(f"Erreur lors de la recherche du bouton Inviter : {e}")
+        return False
+
     email_list = get_emails_from_excel()
-    Invite_input = wait.until(EC.presence_of_element_located((By.ID, 'ccx-ss-flex-input-textarea')))
-    for idx, email in enumerate(email_list):
-        if idx != 0:
-            Invite_input.send_keys(" ")
-        Invite_input.send_keys(email)
     try:
-        Invite_button2 = wait.until(EC.element_to_be_clickable((By.ID, 'ccx-ss-invite-send-btn')))
-        Invite_button2.click()
+        invite_input = wait.until(EC.presence_of_element_located((By.ID, 'ccx-ss-flex-input-textarea')))
+        for idx, email in enumerate(email_list):
+            if idx != 0:
+                invite_input.send_keys(" ")
+            invite_input.send_keys(email)
     except Exception as e:
-        print(f"Erreur lors de l'invitation de l'e-mail : {e}")
+        print(f"Erreur lors de la saisie des emails : {e}")
+        return False
+
     try:
-        Close_button = wait.until(EC.element_to_be_clickable((By.ID, 'ccx-ss-invite-close-btn')))
-        Close_button.click()
+        invite_button2 = wait.until(EC.element_to_be_clickable((By.ID, 'ccx-ss-invite-send-btn')))
+        invite_button2.click()
     except Exception as e:
-        print(f"Erreur lors du clic sur l'autre bouton : {e}")
+        print(f"Erreur lors de l'invitation de l'email : {e}")
+        return False
+
+    try:
+        close_button = wait.until(EC.element_to_be_clickable((By.ID, 'ccx-ss-invite-close-btn')))
+        close_button.click()
+        return True
+    except Exception as e:
+        print(f"Erreur lors du clic sur le bouton Fermer : {e}")
+        return False
+
+def generate_report(results):
+    df = pd.DataFrame(results)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_file = f"invitation_report_{timestamp}.xlsx"
+    df.to_excel(report_file, index=False)
+    messagebox.showinfo("Rapport généré", f"Le rapport a été généré : {report_file}")
 
 def on_submit():
     email = email_entry.get()
